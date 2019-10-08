@@ -101,7 +101,7 @@ while( X{i}(3,1) >= 0 )
     X{i+1} = X{i} + (1/2)*h*(p1 + p2);   
     
     % Nos instantes de amostragem.
-    % if( contadorTempo >= Ts )
+%     if( contadorTempo >= Ts )
     if ( mod(tempoC(i), Ts) == 0 )
         
         % Zero o contador e atualiza base de tempo discreto (tempoD).
@@ -248,3 +248,11 @@ grid;
 xlabel('Tempo (s)');
 ylabel('Erro em velocidade -- vy');
 ylim([-20 20]);
+
+% Salvar os parâmetros do sistema.
+rodada = num2str(PHI_s);
+name   = 'simulacao_PHIs_';
+name   = strcat(name, rodada);
+name   = strcat(name, '.mat');
+save(name, 'X', 'Xa', 'X_hat', 'tempoC', 'tempoD', 'M', 'P', 'K');
+
