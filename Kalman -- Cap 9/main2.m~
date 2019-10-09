@@ -86,64 +86,59 @@ P0 = [delta(1)^2     0          0           0;
 %       Roda um Runge-Kuta de 2nd Ordem -- para o sistema sem ruído.
 %
 % =========================================================================
+tempoC(1) = 0;
+j  = 0;
 i = 1;
-j = 1;
-contadorTempo = 0;
 while( X{i}(3,1) >= 0 )
-    
+      
     % Base de tempo.
-    tempoC(i)     = (i-1)*h;
-    contadorTempo = contadorTempo + h;
+    tempoC(i+1) = i*h;
     
     % Runge Kutta 2º Ordem -- Dinâmica do sistema.
-    p1     = f(X{i}, tempoC(i) + h);
-    p2     = f(X{i}, tempoC(i));
-    X{i+1} = X{i} + (1/2)*h*(p1 + p2);   
+    p1     = f(X{i}, tempoC(i));
+    p2     = f(X{i}, tempoC(i) + h);
+    X{i+1} = X{i} + (1/2)*h*(p1 + p2);  
     
-    % Nos instantes de amostragem.
-%     if( contadorTempo >= Ts )
-    if ( mod(tempoC(i), Ts) == 0 )
+    if( rem(tempoC(i+1), Ts) == 0 )
+        j         = j + 1;
+        tempoD(j) = tempoC(i+1);
         
-        % Zero o contador e atualiza base de tempo discreto (tempoD).
-        contadorTempo = 0;
-        tempoD(j)     = j*Ts;               
-        
-        % Cálculo do 'r' e 'theta'.
-        [raio(j), theta(j)] = raio_e_angulo(X{i}(1,1), X{i}(3,1), x_radar, y_radar);
+        % Cálculo do 'r' e 'theta' no instante de amostragem.
+        [raio(j), theta(j)] = raio_e_angulo(X{i+1}(1,1), X{i+1}(3,1), x_radar, y_radar);
         
         % Insere o ruído no raio e no ângulo e junta o vetor de medidas.
         theta_noise(j) = theta(j) + (media_theta + sigma_theta*randn);
         raio_noise(j)  =  raio(j) + ( media_raio +  sigma_raio*randn);
         z{j}           = [theta_noise(j); raio_noise(j)];
-        
+
         % =================================================================
         % Runge Kutta 2º Ordem -- Estimação do estado no futuro com base no
         % vetor de estados estimados no atual intante de tempo.
         int = 0.001;
         t   = 0;
         X_hat0 = X_hat{j};
-        for k = 1:((Ts/int))
+        for k = 1:((Ts/int)-1)
             t = t + int;
             p1         = f(X_hat0, t + int);
             p2         = f(X_hat0, t);
             X_hat0 = X_hat0 + (1/2)*int*(p1 + p2); 
         end
-        X_hat{j+1} = X_hat0;
+        X_hat_menos{j+1} = X_hat0;
         % =================================================================
-
+        
         % Apenas quebro as variáveis para o plot em seguida.
-        xhat   = X_hat{j}(1,1);
-        yhat   = X_hat{j}(3,1);
+        xhat   = X_hat_menos{j+1}(1,1);
+        yhat   = X_hat_menos{j+1}(3,1);
 
         % Estimação do 'raio' e do 'theta' com base nas medidas até então
         % disponíveis.
-        [raio_estimado, theta_estimado] = raio_e_angulo(xhat, yhat, x_radar, y_radar);
+        [raio_estimado(j), theta_estimado(j)] = raio_e_angulo(xhat, yhat, x_radar, y_radar);
         
         % O meu problema de exige uma matriz 'H', dada por:
         H   = matrizH(xhat, yhat, x_radar, y_radar);
         
         % Resíduo.
-        Residuo{j} = z{j} - [theta_estimado; raio_estimado];        
+        Residuo{j} = z{j} - [theta_estimado(j); raio_estimado(j)];        
 
         % Equações de Riccati
         if( j == 1 )
@@ -157,20 +152,14 @@ while( X{i}(3,1) >= 0 )
         end
          
         % Atualiza o vetor de estados estimados.
-        X_hat{j+1} = X_hat{j+1} + K{j}*Residuo{j};
+        X_hat{j+1} = X_hat{j+} + K{j}*Residuo{j};       
         
         
-        % Apenas para facilitar o plot
-        Xa{j} = X{i};
-        
-        % Atualização do passo de amostragem.
-        j = j + 1;
     end
-   
+    
     % Atualiza o passo de integração.
     i = i + 1;
 end
-Xa{j}     = X{i};
 
 % Em 'x_hat'
 for i = 1:(max(size(X_hat)) - 1)
@@ -181,11 +170,15 @@ for i = 1:(max(size(X_hat)) - 1)
 end
 
 % Em 'x'
-for i = 1:(max(size(Xa)) - 1)
-    x(i)  = Xa{i}(1,1);
-    vx(i) = Xa{i}(2,1);
-    y(i)  = Xa{i}(3,1);
-    vy(i) = Xa{i}(4,1);
+cont = 0;
+for i = 1:(max(size(X)) - 1)
+    if ( rem(tempoC(i+1), Ts) == 0 )
+        cont = cont + 1;
+        x(cont)  = X{i}(1,1);
+        vx(cont) = X{i}(2,1);
+        y(cont)  = X{i}(3,1);
+        vy(cont) = X{i}(4,1); 
+    end
 end
 
 % De forma equivalente, os valores das covariâncias do sistema.
@@ -251,32 +244,9 @@ xlabel('Tempo (s)');
 ylabel('Erro em velocidade -- vy');
 ylim([-20 20]);
 
-% Salvar os parâmetros do sistema.
-rodada = num2str(PHI_s);
-name   = 'simulacao_PHIs_';
-name   = strcat(name, rodada);
-name   = strcat(name, '.mat');
-save(name, 'X', 'Xa', 'X_hat', 'tempoC', 'tempoD', 'M', 'P', 'K');
-
-
-
-
-% Em termos explicativos, a gente pode tentar fazer a escala do tempo da
-% seguinte forma:
-%
-%  k = 0.
-% -------
-%
-% 1. Eu tenho apenas uma estimativa do estado, ou seja, 'x_hat(0)' e 
-%    realizei uma medida 'z(0)'.
-% 2. Como eu 'conheço' a dinâmica do sistema, o que observaria para o
-%    estado 'x_hat(1)' conhecendo apenas a sua dinâmica? Isso mesmo, um
-%    Runge Kutta em cima do 'x_hat(0)'. 
-% 3. Para o vetor de estados que eu chutei (x_hat(0)), eu conseguiria
-%    estimar as medidas também observadas por 'z(0)'. 
-% 4. Quão errada está a minha medida quando comparada com a minha
-%    estimação? Isso mesmo, uma variável que eu chamarei de resíduo, dada
-%    pela diferença entre o que eu medi (z(0)) por aqui que eu estimei por
-%    meio do vetor de estados 'x_hat(0)'.
-% 5. A próxima propagação dos estados têm de levar em conta aquilo que eu
-%    observei. Ou seja, 
+% % Salvar os parâmetros do sistema.
+% rodada = num2str(PHI_s);
+% name   = 'simulacao_PHIs_';
+% name   = strcat(name, rodada);
+% name   = strcat(name, '.mat');
+% save(name, 'X', 'X_hat', 'tempoC', 'tempoD', 'M', 'P', 'K');
